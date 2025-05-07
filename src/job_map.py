@@ -1,125 +1,151 @@
 import streamlit as st
 import plotly.express as px
+import pandas as pd
 
-def main(df):
+# Cache processed job data to avoid recomputation
+@st.cache_data
+def process_data(df, state_df, city_df):
+    """Preprocess job data and aggregate metrics for faster loading."""
+
+    # --------------------------------
+    # ✅ Step 1: Aggregate job data
+    # --------------------------------
+    # STATE-LEVEL Aggregation
+    # STATE-LEVEL Aggregation (Sorted by JOB_COUNT)
+    state_agg = df.groupby("STATE").agg(
+        JOB_COUNT=("JOB_ID", "count"),
+        AVG_SALARY=("AVG_SALARY", "mean")
+    ).reset_index().sort_values(by="JOB_COUNT", ascending=False)
+
+    # CITY-LEVEL Aggregation (Sorted by JOB_COUNT)
+    city_agg = df.groupby("LOCATION").agg(
+        JOB_COUNT=("JOB_ID", "count")
+    ).reset_index().sort_values(by="JOB_COUNT", ascending=False)
+
+    # --------------------------------
+    # ✅ Step 2: Join State Data (AFTER Aggregation)
+    # --------------------------------
+    state_agg = state_agg.merge(
+        state_df[["STATE", "STATE_LATITUDE", "STATE_LONGITUDE", "POPULATION", "COST_INDEX"]],
+        on="STATE", how="left"
+    )
+
+    # --------------------------------
+    # ✅ Step 3: Join City Data (AFTER Aggregation)
+    # --------------------------------
+    city_agg = city_agg.merge(
+        city_df[["LOCATION", "LATITUDE", "LONGITUDE"]].drop_duplicates(),
+        on="LOCATION", how="left"
+    )
+
+    # --------------------------------
+    # ✅ Step 4: Compute Adjusted Metrics
+    # --------------------------------
+    # Adjusted Job Count by Population (Global normalization)
+    overall_mean_pop = state_agg["POPULATION"].mean()
+    state_agg["ADJUSTED_JOB_COUNT"] = state_agg["JOB_COUNT"] * (overall_mean_pop / state_agg["POPULATION"])
+
+    # Adjusted Salary by Cost of Living
+    state_agg["ADJUSTED_AVG_SALARY"] = state_agg.apply(
+        lambda row: row["AVG_SALARY"] * (100 / row["COST_INDEX"]) if row["COST_INDEX"] > 0 else row["AVG_SALARY"],
+        axis=1
+    )
+
+    return state_agg, city_agg
+
+def main(df, state_df, city_df):
     st.header("Job Density Map")
-    
+
+    # Process Data (cached)
+    state_agg, city_agg = process_data(df, state_df, city_df)
+
     # --- Map Section ---
     map_type = st.selectbox("Select Map Type", ["State-Level", "City-Level"])
-    zoom_level = 4 if df['state'].nunique() == 1 else 3
+    zoom_level = 4 if df['STATE'].nunique() == 1 else 3
 
     if map_type == "State-Level":
-        state_data = df.groupby("state").size().reset_index(name="count")
-        state_data = state_data.merge(
-            df[["state", "state_latitude", "state_longitude"]].drop_duplicates(), 
-            on="state", how="left"
-        )
-        state_data = state_data.dropna(subset=["state_latitude", "state_longitude"])
-        if state_data.empty:
+        if state_agg.empty:
             st.warning("No data available for state-level analysis.")
         else:
-            fig_map = px.scatter_map(
-                state_data,
-                lat="state_latitude",
-                lon="state_longitude",
-                size="count",
-                color="state",
-                hover_name="state",
+            fig_map = px.scatter_mapbox(
+                state_agg.dropna(subset=["STATE_LATITUDE", "STATE_LONGITUDE"]),
+                lat="STATE_LATITUDE",
+                lon="STATE_LONGITUDE",
+                size="JOB_COUNT",
+                color="STATE",
+                hover_name="STATE",
                 title="Job Density by State",
                 zoom=zoom_level,
                 opacity=0.7,
                 size_max=35
             )
-            fig_map.update_layout(showlegend=False)
+            fig_map.update_layout(mapbox_style="carto-positron", showlegend=False)
             st.plotly_chart(fig_map, use_container_width=True)
     else:
-        city_data = df.groupby(["location_st", "latitude", "longitude"]).size().reset_index(name="count")
-        city_data = city_data.dropna(subset=["latitude", "longitude"])
-        city_data = city_data.sort_values(by="count", ascending=False).head(200)
-        if city_data.empty:
+        if city_agg.empty:
             st.warning("No city-level data available.")
         else:
-            fig_map = px.scatter_map(
-                city_data,
-                lat="latitude",
-                lon="longitude",
-                size="count",
-                color="location_st",
-                hover_name="location_st",
+            city_agg_100 = city_agg.head(200)
+            fig_map = px.scatter_mapbox(
+                city_agg_100.dropna(subset=["LATITUDE", "LONGITUDE"]),
+                lat="LATITUDE",
+                lon="LONGITUDE",
+                size="JOB_COUNT",
+                color="LOCATION",
+                hover_name="LOCATION",
                 title="Job Density by City",
                 zoom=zoom_level,
                 opacity=0.7,
                 size_max=20
             )
-            fig_map.update_layout(showlegend=False, width=800, height=600)
-            st.plotly_chart(fig_map, use_container_width=False)
-    
+            fig_map.update_layout(mapbox_style="carto-positron", showlegend=False)
+            st.plotly_chart(fig_map, use_container_width=True)
+
     st.markdown("### Top Locations Analysis")
-    
-    # Determine grouping key based on map type.
-    group_key = "state" if map_type == "State-Level" else "location_st"
-    
+    group_key = "STATE" if map_type == "State-Level" else "LOCATION"
+
     # ------------------------
     # Chart 1: Top by Job Counts (Filtered)
     # ------------------------
-    counts_df = df.groupby(group_key).agg(job_count=("job_id", "count")).reset_index()
-    counts_df = counts_df.sort_values("job_count", ascending=False).head(20)
-    fig1 = px.bar(counts_df, x="job_count", y=group_key, orientation='h',
-                  title="Top State by Job Counts",
+    top_job_count = state_agg[["STATE", "JOB_COUNT"]].sort_values("JOB_COUNT", ascending=False).head(20)
+    fig1 = px.bar(top_job_count, x="JOB_COUNT", y="STATE", orientation='h',
+                  title="Top States by Job Counts",
                   color_discrete_sequence=px.colors.qualitative.Plotly)
     fig1.update_yaxes(categoryorder="total ascending")
-    height1 = max(200, len(counts_df)*30)
-    fig1.update_layout(height=height1)
-    
+    fig1.update_layout(height=max(200, len(top_job_count) * 30))
+
     # ------------------------
     # Chart 2: Top by Average Salary (Filtered)
     # ------------------------
-    salary_df = df[df["avg_salary"].notnull()].groupby(group_key).agg(avg_salary=("avg_salary", "mean")).reset_index()
-    salary_df = salary_df.sort_values("avg_salary", ascending=False).head(20)
-    fig2 = px.bar(salary_df, x="avg_salary", y=group_key, orientation='h',
-                  title="Top State by Average Salary",
+    top_avg_salary = state_agg[["STATE", "AVG_SALARY"]].dropna().sort_values("AVG_SALARY", ascending=False).head(20)
+    fig2 = px.bar(top_avg_salary, x="AVG_SALARY", y="STATE", orientation='h',
+                  title="Top States by Average Salary",
                   color_discrete_sequence=px.colors.qualitative.Plotly)
     fig2.update_yaxes(categoryorder="total ascending")
-    height2 = max(200, len(salary_df)*30)
-    fig2.update_layout(height=height2)
-    
+    fig2.update_layout(height=max(200, len(top_avg_salary) * 30))
+
     # ------------------------
-    # Chart 3: Job Counts Adjusted by Population (Global)
+    # Chart 3: Job Counts Adjusted by Population
     # ------------------------
-    pop_df = df.groupby(group_key).agg(job_count=("job_id", "count"),
-                                        population=("population", "mean")).reset_index()
-    overall_mean_pop = pop_df["population"].mean()
-    pop_df["adjusted_job_count"] = pop_df["job_count"] * (overall_mean_pop / pop_df["population"])
-    pop_df = pop_df.sort_values("adjusted_job_count", ascending=False).head(20)
-    fig3 = px.bar(pop_df, x="adjusted_job_count", y=group_key, orientation='h',
-                  title="Top State by Job Counts - Adjusted by Population",
+    top_adj_jobs = state_agg[["STATE", "ADJUSTED_JOB_COUNT"]].dropna().sort_values("ADJUSTED_JOB_COUNT", ascending=False).head(20)
+    fig3 = px.bar(top_adj_jobs, x="ADJUSTED_JOB_COUNT", y="STATE", orientation='h',
+                  title="Top States by Job Counts - Adjusted by Population",
                   color_discrete_sequence=["lightblue"])
     fig3.update_yaxes(categoryorder="total ascending")
-    height3 = max(200, len(pop_df)*30)
-    fig3.update_layout(height=height3)
-    
+    fig3.update_layout(height=max(200, len(top_adj_jobs) * 30))
+
     # ------------------------
-    # Chart 4: Average Salary Adjusted by Cost Index (Global)
+    # Chart 4: Average Salary Adjusted by Cost of Living
     # ------------------------
-    cost_df = df[df["avg_salary"].notnull()].groupby(group_key).agg(
-                avg_salary=("avg_salary", "mean"),
-                cost_index=("cost_index", "mean")
-              ).reset_index()
-    cost_df["adjusted_avg_salary"] = cost_df.apply(
-        lambda row: row["avg_salary"] * (100 / row["cost_index"]) if row["cost_index"] > 0 else row["avg_salary"],
-        axis=1
-    )
-    cost_df = cost_df.sort_values("adjusted_avg_salary", ascending=False).head(20)
-    fig4 = px.bar(cost_df, x="adjusted_avg_salary", y=group_key, orientation='h',
-                  title="Top State by Average Salary - Adjusted by Cost of Living",
+    top_adj_salary = state_agg[["STATE", "ADJUSTED_AVG_SALARY"]].dropna().sort_values("ADJUSTED_AVG_SALARY", ascending=False).head(20)
+    fig4 = px.bar(top_adj_salary, x="ADJUSTED_AVG_SALARY", y="STATE", orientation='h',
+                  title="Top States by Average Salary - Adjusted by Cost of Living",
                   color_discrete_sequence=["lightblue"])
     fig4.update_yaxes(categoryorder="total ascending")
-    height4 = max(200, len(cost_df)*30)
-    fig4.update_layout(height=height4)
-    
+    fig4.update_layout(height=max(200, len(top_adj_salary) * 30))
+
     # ------------------------
     # Layout: Arrange the four charts in a 2x2 grid.
-    # Left column: Chart 1 and Chart 3; Right column: Chart 2 and Chart 4.
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(fig1, use_container_width=True)

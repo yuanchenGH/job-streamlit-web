@@ -1,8 +1,55 @@
 import streamlit as st
 import pandas as pd
-import datetime
 import ast
-import re
+import snowflake.connector
+import os
+import bcrypt
+from dotenv import load_dotenv
+
+
+# Load user credentials from file
+@st.cache_data
+def load_user_credentials(filepath="users.csv"):
+    users_df = pd.read_csv(filepath)
+    user_dict = dict(zip(users_df["username"], users_df["password_hash"]))
+    return user_dict
+
+# Authentication function
+def authenticate(username, password, user_credentials):
+    if username in user_credentials:
+        stored_hash = user_credentials[username].encode("utf-8")
+        if bcrypt.checkpw(password.encode("utf-8"), stored_hash):
+            return True
+    return False
+
+# Load users once
+user_credentials = load_user_credentials("users.csv")
+
+# Check session state
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    st.title("🔐 Secure Login")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if authenticate(username, password, user_credentials):
+            st.session_state["authenticated"] = True
+            st.success("✅ Login successful!")
+            st.rerun()
+        else:
+            st.error("❌ Invalid username or password")
+
+    st.stop()
+
+load_dotenv()
+
+snowflake_username = os.getenv('SNOWFLAKE_USERNAME')
+snowflake_password = os.getenv('SNOWFLAKE_PASSWORD')
+snowflake_account = os.getenv('SNOWFLAKE_ACCOUNT')
 
 # Set the page layout to wide
 st.set_page_config(layout="wide")
@@ -10,14 +57,12 @@ st.set_page_config(layout="wide")
 # Inject CSS to minimize outer and top space
 st.markdown("""
     <style>
-        /* Reduce padding in the main container */
         .main .block-container {
             padding-top: 0rem;
             padding-right: 1rem;
             padding-left: 1rem;
             padding-bottom: 0rem;
         }
-        /* Remove extra top margin from header elements */
         h1 { 
             margin-top: 0.5rem; 
             font-size: 10px;
@@ -27,218 +72,206 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ---- File Paths (Replace with Actual Paths) ----
+# ---- File Paths ----
 path = 'D:/Learn/projects/data/job_data/mine/'
-raw_data_path = f"{path}linkedin_jobs_fin_acc_02152025_03072025.parquet"
-ai_processed_path = f"{path}linkedin_fin_acc_AIprocessed_02152025_to_03072025B.csv"
-city_coordinates_path = f"{path}coordinates_city.csv"
-state_coordinates_path = f"{path}coordinates_state.csv"
-companies_info_path = f"{path}companies_info.csv"
 
 @st.cache_data
 def load_data():
-    raw = pd.read_parquet(raw_data_path)
-    ai_processed = pd.read_csv(
-        ai_processed_path,
-        usecols=["job_id", "location_st", "state", "avg_salary", "skills_clean",
-                 "degree", "min_years_of_experience", "job_title_clean",
-                 "job_function_list", "industries_list"]
+    conn = snowflake.connector.connect(
+        user=snowflake_username,
+        password=snowflake_password,
+        account=snowflake_account,
+        warehouse="COMPUTE_WH",
+        database="LINKEDIN_JOBS",
+        schema="PUBLIC"
     )
-    city_coordinates = pd.read_csv(city_coordinates_path, usecols=["location", "latitude", "longitude"])
-    state_coordinates = pd.read_csv(
-        state_coordinates_path,
-        usecols=["state", "state_latitude", "state_longitude", "cost_index", "population"]
-    )
-    merged_df = raw.merge(ai_processed, on="job_id", how="left")
-    merged_df.drop(merged_df[merged_df['avg_salary'] > 1000000].index, inplace=True)
-    merged_df = merged_df.merge(city_coordinates, left_on="location_st", right_on="location", how="left")
-    merged_df = merged_df.merge(state_coordinates, on="state", how="left")
-    merged_df['posted_date'] = pd.to_datetime(merged_df['posted_date'], errors='coerce')
-    companies_info = pd.read_csv(
-        companies_info_path, 
-        usecols=['company_name','clean_url','Followers','Website','Verified page','Industry',
-                 'Company size','Members','Headquarters','Founded','Specialties','Posts',
-                 'Where they live','Where they studied','What they do','What they are skilled at','What they studied']
-    )
-    return merged_df, companies_info
 
-df, company_df = load_data()
+    query_jobs = """
+    SELECT 
+        AI.JOB_ID,
+        AI.JOB_TITLE,
+        R.WORKPLACE,
+        R.JOB_URL,
+        R.SENIORITY_LEVEL,
+        R.EMPLOYMENT_TYPE,
+        R.JOB_FUNCTION,
+        R.INDUSTRIES,
+        R.COMPANY_NAME,
+        R.COMPANY_URL,
+        R.SALARY,
+        AI.DATE AS POSTED_DATE,
+        AI.AVG_SALARY,
+        AI.SKILLS_MATCHED,
+        AI.DEGREE,
+        AI.MIN_YEARS_OF_EXPERIENCE,
+        AI.PRIMARY_TITLE,
+        AI.SUB_TITLE,
+        AI.JOB_FUNCTION_LIST,
+        AI.LOCATION_ST AS LOCATION,
+        AI.STATE
+    FROM LINKEDIN_FIN_ACC_AI AI
+    LEFT JOIN LINKEDIN_FIN_ACC_RAW R 
+      ON R.JOB_ID = AI.JOB_ID
+    WHERE AI.POSTED_DATE > '02/22/2025'
+          AND (AI.AVG_SALARY > 20000 AND AI.AVG_SALARY < 500000
+           OR AI.AVG_SALARY IS NULL)
+    ORDER BY AI.POSTED_DATE DESC;
+    """
 
-# ---- Determine Valid Date Range from Data ----
-min_date = df['posted_date'].min().date() if pd.notnull(df['posted_date'].min()) else datetime.date(2020, 1, 1)
-max_date = df['posted_date'].max().date() if pd.notnull(df['posted_date'].max()) else datetime.date.today()
+    merged_df = pd.read_sql(query_jobs, conn)
+    merged_df['POSTED_DATE'] = pd.to_datetime(merged_df['POSTED_DATE'], errors='coerce')
 
-# ---- Prepare Options for Basic Dropdowns ----
-state_options = sorted(df['state'].dropna().unique().tolist())
-workplace_options = sorted(df['workplace'].dropna().unique().tolist())
-seniority_options = sorted(df['seniority_level'].dropna().unique().tolist())
-employment_options = sorted(df['employment_type'].dropna().unique().tolist())
+    query_companies = """SELECT 
+                                CLEAN_URL,
+                                COMPANY_NAME,
+                                COMPANY_SIZE,
+                                FOLLOWERS,
+                                FOUNDED,
+                                HEADQUARTERS,
+                                INDUSTRY,
+                                MEMBERS,
+                                POSTS,
+                                SPECIALTIES,
+                                VERIFIED_PAGE,
+                                WEBSITE,
+                                WHAT_THEY_ARE_SKILLED_AT,
+                                WHAT_THEY_DO,
+                                WHAT_THEY_STUDIED,
+                                WHERE_THEY_LIVE,
+                                WHERE_THEY_STUDIED
+                         FROM COMPANIES_INFO
+                      """
+    companies_info = pd.read_sql(query_companies, conn)
 
-# ---- Prepare Options for Job Title (sorted by frequency) ----
-if 'job_title_clean' in df.columns:
-    title_counts = df['job_title_clean'].value_counts()
-    job_title_options = title_counts.index.tolist()  # most frequent first
-else:
-    job_title_options = []
+    query_state_coordinates = "SELECT * FROM COORDINATES_STATE"
+    state_df = pd.read_sql(query_state_coordinates, conn)
 
-# ---- Prepare Options for Job Function (parse from job_function_list) ----
-job_func_set = set()
-if 'job_function_list' in df.columns:
-    for row_val in df['job_function_list'].dropna():
-        try:
-            parsed = ast.literal_eval(row_val)
-            if isinstance(parsed, list):
-                for func in parsed:
-                    job_func_set.add(func.strip())
-        except:
-            continue
-job_func_options = sorted(job_func_set)
+    query_city_coordinates = "SELECT * FROM COORDINATES_CITY"
+    city_df = pd.read_sql(query_city_coordinates, conn)
 
-# ---- Prepare Options for Industries (parse from industries_list) ----
-industry_counts_dict = {}
-if 'industries_list' in df.columns:
-    for row_val in df['industries_list'].dropna():
-        try:
-            parsed = ast.literal_eval(row_val)
-            if isinstance(parsed, list):
-                for ind in parsed:
-                    ind_str = ind.strip()
-                    industry_counts_dict[ind_str] = industry_counts_dict.get(ind_str, 0) + 1
-        except:
-            continue
-# Sort industries by count descending.
-industry_sorted_by_count = sorted(industry_counts_dict.items(), key=lambda x: x[1], reverse=True)
-industry_options = [item[0] for item in industry_sorted_by_count]
+    query_job_titles = "SELECT PRIMARY_TITLE FROM job_title_counts ORDER BY count DESC;"
+    job_title_options = pd.read_sql(query_job_titles, conn)['PRIMARY_TITLE'].tolist()
 
-# ---- Salary Range as a Drop-Down with Options ----
+    query_job_functions = "SELECT job_function FROM job_function_counts ORDER BY count DESC;"
+    job_func_options = pd.read_sql(query_job_functions, conn)['JOB_FUNCTION'].tolist()
+
+    conn.close()
+    return merged_df, companies_info, state_df, city_df, job_title_options, job_func_options
+
+df, company_df, state_df, city_df, job_title_options, job_func_options = load_data()
+
+# Remove double quotes
+job_title_options = [title.replace('"', '') for title in job_title_options]
+job_func_options = [func.replace('"', '') for func in job_func_options]
+
+min_date = df['POSTED_DATE'].min()
+max_date = df['POSTED_DATE'].max()
+
+state_options = sorted(state_df['STATE'].unique().tolist())
+workplace_options = ['onsite', 'hybrid', 'remote']
+seniority_options = ['Internship', 'Entry level', 'Associate', 'Mid-Senior level', 'Director', 'Executive', 'Not Applicable']
+employment_options = ['Full-time', 'Internship', 'Part-time', 'Contract', 'Temporary', 'Volunteer', 'Other']
+
 salary_ranges = [
-    "All",
-    "20k - 40k",
-    "40k - 60k",
-    "60k - 80k",
-    "80k - 100k",
-    "100k - 120k",
-    "120k - 140k",
-    "140k - 160k",
-    "160k - 180k",
-    "180k - 200k",
-    "200k+"
+    "All", "20K - 40K", "40K - 60K", "60K - 80K", "80K - 100K",
+    "100K - 120K", "120K - 140K", "140K - 160K", "160K - 180K",
+    "180K - 200K", "200K+"
 ]
 
-# Helper function to parse salary range selection.
-def parse_salary_range(selection):
-    if selection == "All":
-        return None, None
-    elif selection == "200k+":
-        return 200000, None
-    else:
-        parts = selection.split("-")
-        lower_val = int(parts[0].strip().replace("k","")) * 1000
-        upper_val = int(parts[1].strip().replace("k","")) * 1000
-        return lower_val, upper_val
+# ✅ Make sure active_page is preserved across reruns
+if "active_page" not in st.session_state:
+    st.session_state["active_page"] = "Overview"
+
+# Sidebar navigation linked to session state
+st.sidebar.title("Navigation")
+page = st.sidebar.radio(
+    "Go to",
+    ["Overview", "Job Map", "Requirements", "Company Info", "Jobs Lookup", "Other Resources"],
+    index=["Overview", "Job Map", "Requirements", "Company Info", "Jobs Lookup", "Other Resources"].index(st.session_state["active_page"]),
+    key="active_page"
+)
 
 st.title("Job Data Dashboard")
 
-# ---- First Row of Filters (4 columns) ----
-row1 = st.columns(4)
-with row1[0]:
-    date_range = st.date_input(
-        "Date Range",
-        value=[min_date, max_date],
-        min_value=min_date,
-        max_value=max_date
-    )
-with row1[1]:
-    selected_state = st.selectbox("State", options=["All"] + state_options)
-with row1[2]:
-    selected_workplace = st.selectbox("Workplace", options=["All"] + workplace_options)
-with row1[3]:
-    selected_seniority = st.selectbox("Seniority Level", options=["All"] + seniority_options)
+with st.form(key="filters_form"):
+    row1 = st.columns(4)
+    row2 = st.columns(4)
 
-# ---- Second Row of Filters (5 columns) ----
-row2 = st.columns(5)
-with row2[0]:
-    selected_employment = st.selectbox("Employment Type", options=["All"] + employment_options)
-with row2[1]:
-    if job_title_options:
-        selected_title = st.selectbox("Job Title", options=["All"] + job_title_options)
-    else:
-        selected_title = "All"
-with row2[2]:
-    selected_job_funcs = st.multiselect("Job Function", options=job_func_options)
-with row2[3]:
-    selected_inds = st.multiselect("Industries", options=industry_options)
-with row2[4]:
-    selected_salary_range = st.selectbox("Salary Range", options=salary_ranges)
+    with row1[0]:
+        date_range = st.date_input(
+            "Date Range",
+            value=st.session_state.get("date_range", [min_date, max_date]),
+            min_value=min_date,
+            max_value=max_date,
+            key="date_range"
+        )
+    with row1[1]:
+        selected_state = st.selectbox("State", options=["All"] + state_options, key="selected_state")
+    with row1[2]:
+        selected_workplace = st.selectbox("Workplace", options=["All"] + workplace_options, key="selected_workplace")
+    with row1[3]:
+        selected_seniority = st.selectbox("Seniority Level", options=["All"] + seniority_options, key="selected_seniority")
 
-# ---- Apply Filters to the DataFrame ----
-filtered_df = df[
-    (df['posted_date'] >= pd.to_datetime(date_range[0])) & 
-    (df['posted_date'] <= pd.to_datetime(date_range[1]))
-]
+    with row2[0]:
+        selected_job_title = st.selectbox("Job Title", options=["All"] + job_title_options, key="selected_job_title")
+    with row2[1]:
+        selected_job_func = st.selectbox("Job Function", options=["All"] + job_func_options, key="selected_job_func")
+    with row2[2]:
+        selected_salary = st.selectbox("Salary Range", options=salary_ranges, key="selected_salary")
+
+    cols = st.columns(6)
+    with cols[0]:
+        submit_button = st.form_submit_button(label="Apply Filters")
+    with cols[1]:
+        reset_button = st.form_submit_button(label="Reset Filters")
+
+if reset_button:
+    for key in ["date_range", "selected_state", "selected_workplace", "selected_seniority", "selected_job_title", "selected_job_func", "selected_salary"]:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.rerun()
+
+start_date = pd.to_datetime(date_range[0])
+end_date = pd.to_datetime(date_range[1])
+
+filtered_df = df[(df['POSTED_DATE'] >= start_date) & (df['POSTED_DATE'] <= end_date)]
+
 if selected_state != "All":
-    filtered_df = filtered_df[filtered_df['state'] == selected_state]
+    filtered_df = filtered_df[filtered_df['STATE'] == selected_state]
 if selected_workplace != "All":
-    filtered_df = filtered_df[filtered_df['workplace'] == selected_workplace]
+    filtered_df = filtered_df[filtered_df['WORKPLACE'] == selected_workplace]
 if selected_seniority != "All":
-    filtered_df = filtered_df[filtered_df['seniority_level'] == selected_seniority]
-if selected_employment != "All":
-    filtered_df = filtered_df[filtered_df['employment_type'] == selected_employment]
-if selected_title != "All":
-    filtered_df = filtered_df[filtered_df['job_title_clean'] == selected_title]
+    filtered_df = filtered_df[filtered_df['SENIORITY_LEVEL'] == selected_seniority]
+if selected_job_title != "All":
+    filtered_df = filtered_df[filtered_df['PRIMARY_TITLE'] == selected_job_title]
+if selected_job_func != "All":
+    filtered_df = filtered_df[filtered_df['JOB_FUNCTION_LIST'].apply(
+        lambda x: selected_job_func in ast.literal_eval(x) if isinstance(x, str) else False
+    )]
+if selected_salary != "All":
+    salary_min, salary_max = selected_salary.replace("K", "").split(" - ")
+    salary_min = int(salary_min) * 1000
+    salary_max = int(salary_max) * 1000 if salary_max != "+" else float('inf')
+    filtered_df = filtered_df[
+        (filtered_df['AVG_SALARY'] >= salary_min) & (filtered_df['AVG_SALARY'] <= salary_max)
+    ]
 
-# Filter by job_function_list
-if selected_job_funcs:
-    def row_has_any_funcs(row_val):
-        try:
-            parsed = ast.literal_eval(row_val)
-            if isinstance(parsed, list):
-                return any(func.strip() in selected_job_funcs for func in parsed)
-        except:
-            return False
-        return False
-    filtered_df = filtered_df[filtered_df['job_function_list'].notnull() & 
-                              filtered_df['job_function_list'].apply(row_has_any_funcs)]
-    
-# Filter by industries_list
-if selected_inds:
-    def row_has_any_inds(row_val):
-        try:
-            parsed = ast.literal_eval(row_val)
-            if isinstance(parsed, list):
-                return any(ind.strip() in selected_inds for ind in parsed)
-        except:
-            return False
-        return False
-    filtered_df = filtered_df[filtered_df['industries_list'].notnull() &
-                              filtered_df['industries_list'].apply(row_has_any_inds)]
-
-# Apply salary filter
-min_sal, max_sal = parse_salary_range(selected_salary_range)
-if min_sal is not None and max_sal is not None:
-    filtered_df = filtered_df[(filtered_df['avg_salary'] >= min_sal) & (filtered_df['avg_salary'] < max_sal)]
-elif min_sal is not None and max_sal is None:
-    filtered_df = filtered_df[filtered_df['avg_salary'] >= min_sal]
-
-# ---- Sidebar Navigation ----
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", 
-    ["Overview", "Job Map", "Requirements", "Company Info", "Jobs Lookup"]
-)
-
-# ---- Route to the Individual Pages ----
-if page == "Overview":
+# ✅ Route to the selected page (which stays remembered)
+if st.session_state["active_page"] == "Overview":
     import overview
     overview.main(filtered_df)
-elif page == "Job Map":
+elif st.session_state["active_page"] == "Job Map":
     import job_map
-    job_map.main(filtered_df)
-elif page == "Requirements":
-    import requirements as requirements
+    job_map.main(filtered_df, state_df, city_df)
+elif st.session_state["active_page"] == "Requirements":
+    import requirements
     requirements.main(filtered_df)
-elif page == "Company Info":
+elif st.session_state["active_page"] == "Company Info":
     import company_info
     company_info.main(filtered_df, company_df)
-elif page == "Jobs Lookup":
+elif st.session_state["active_page"] == "Jobs Lookup":
     import jobs_lookup
     jobs_lookup.main(filtered_df, company_df)
+elif st.session_state["active_page"] == "Other Resources":
+    import other_res
+    other_res.main()

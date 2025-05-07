@@ -34,10 +34,10 @@ def main(df, companies_info):
     # Pie Chart: Industries Distribution
     # -------------------------------
     st.markdown("### Industries Distribution")
-    if "Industry" in companies_info.columns:
-        industry_counts = companies_info["Industry"].value_counts().head(10).reset_index()
-        industry_counts.columns = ["Industry", "Count"]
-        fig_pie = px.pie(industry_counts, values="Count", names="Industry",
+    if "INDUSTRY" in companies_info.columns:
+        industry_counts = companies_info["INDUSTRY"].value_counts().head(10).reset_index()
+        industry_counts.columns = ["INDUSTRY", "Count"]
+        fig_pie = px.pie(industry_counts, values="Count", names="INDUSTRY",
                          title="Industries Distribution",
                          color_discrete_sequence=px.colors.qualitative.Pastel)
         fig_pie.update_traces(textposition='outside', textinfo='label+percent', textfont=dict(size=12))
@@ -51,18 +51,18 @@ def main(df, companies_info):
     # ------------------------
     # Chart 1: Top Companies by Average Salary (exclude companies with <10 postings)
     # ------------------------
-    if "company_name" in df.columns and "avg_salary" in df.columns:
-        company_stats = df[df["avg_salary"].notnull()].groupby("company_name").agg(
-            avg_salary=("avg_salary", "mean"),
-            postings=("company_name", "count")
+    if "COMPANY_NAME" in df.columns and "AVG_SALARY" in df.columns:
+        company_stats = df[df["AVG_SALARY"].notnull()].groupby("COMPANY_NAME").agg(
+            avg_salary=("AVG_SALARY", "mean"),
+            postings=("COMPANY_NAME", "count")
         ).reset_index()
         # Exclude companies with less than 10 postings.
         company_stats = company_stats[company_stats["postings"] >= 10]
         company_stats = company_stats.sort_values("avg_salary", ascending=False).head(20)
         height1 = max(300, len(company_stats)*30)
-        fig_company_salary = px.bar(company_stats, x="avg_salary", y="company_name", orientation="h",
+        fig_company_salary = px.bar(company_stats, x="avg_salary", y="COMPANY_NAME", orientation="h",
                                     title="Top Companies by Average Salary",
-                                    labels={"company_name": "Company", "avg_salary": "Average Salary"})
+                                    labels={"COMPANY_NAME": "Company", "AVG_SALARY": "Average Salary"})
         fig_company_salary.update_yaxes(categoryorder="total ascending")
         fig_company_salary.update_layout(height=height1)
     else:
@@ -71,13 +71,13 @@ def main(df, companies_info):
     # ------------------------
     # Chart 2: Top Companies by Job Count
     # ------------------------
-    if "company_name" in df.columns:
-        job_count_company = df.groupby("company_name").size().reset_index(name="job_count")
+    if "COMPANY_NAME" in df.columns:
+        job_count_company = df.groupby("COMPANY_NAME").size().reset_index(name="job_count")
         job_count_company = job_count_company.sort_values("job_count", ascending=False).head(20)
         height2 = max(300, len(job_count_company)*30)
-        fig_company_job = px.bar(job_count_company, x="job_count", y="company_name", orientation="h",
+        fig_company_job = px.bar(job_count_company, x="job_count", y="COMPANY_NAME", orientation="h",
                                  title="Top Companies by Job Count",
-                                 labels={"company_name": "Company", "job_count": "Job Count"})
+                                 labels={"COMPANY_NAME": "Company", "job_count": "Job Count"})
         fig_company_job.update_yaxes(categoryorder="total ascending")
         fig_company_job.update_layout(height=height2)
     else:
@@ -87,8 +87,8 @@ def main(df, companies_info):
     # Chart 3: Top 20 Schools from "Where they studied"
     # ------------------------
     school_counts = {}
-    if "Where they studied" in companies_info.columns:
-        for entry in companies_info["Where they studied"].dropna():
+    if "WHERE_THEY_STUDIED" in companies_info.columns:
+        for entry in companies_info["WHERE_THEY_STUDIED"].dropna():
             try:
                 school_list = ast.literal_eval(entry)
                 if isinstance(school_list, list):
@@ -116,8 +116,8 @@ def main(df, companies_info):
     # Chart 4: Top 20 Skills from "What they are skilled at"
     # ------------------------
     skill_counts = {}
-    if "What they are skilled at" in companies_info.columns:
-        for entry in companies_info["What they are skilled at"].dropna():
+    if "WHAT_THEY_ARE_SKILLED_AT" in companies_info.columns:
+        for entry in companies_info["WHAT_THEY_ARE_SKILLED_AT"].dropna():
             try:
                 skill_list = ast.literal_eval(entry)
                 if isinstance(skill_list, list):
@@ -165,22 +165,63 @@ def main(df, companies_info):
         else:
             st.write("Skill data not available.")
     
-    st.markdown("### Companies Founded Over Time")
-    if "Founded" in companies_info.columns:
-        companies_info["Founded"] = pd.to_numeric(companies_info["Founded"], errors="coerce")
-        founded_data = companies_info.dropna(subset=["Founded"])
+    st.markdown("### Entry-Level & Newbie-Friendly Companies")
+
+    col_newbie, col_internship = st.columns(2)
+
+    # ------------------------
+    # Left: Most Newbie-Friendly Companies (MIN_YEARS_OF_EXPERIENCE == 0)
+    # ------------------------
+    with col_newbie:
+        if "COMPANY_NAME" in df.columns and "MIN_YEARS_OF_EXPERIENCE" in df.columns:
+            newbie_df = df[df["MIN_YEARS_OF_EXPERIENCE"] == 0]
+            if not newbie_df.empty:
+                newbie_counts = newbie_df.groupby("COMPANY_NAME").size().reset_index(name="newbie_job_count")
+                newbie_counts = newbie_counts.sort_values("newbie_job_count", ascending=False).head(20)
+                height_newbie = max(300, len(newbie_counts)*30)
+                fig_newbie = px.bar(newbie_counts, x="newbie_job_count", y="COMPANY_NAME", orientation="h",
+                                    title="Top Companies Hiring Inexperienced Graduates",
+                                    labels={"COMPANY_NAME": "Company", "newbie_job_count": "Job Count"})
+                fig_newbie.update_yaxes(categoryorder="total ascending")
+                fig_newbie.update_layout(height=height_newbie)
+                st.plotly_chart(fig_newbie, use_container_width=True, key="newbie_chart")
+            else:
+                st.write("No data available for companies hiring inexperienced graduates.")
+        else:
+            st.write("MIN_YEARS_OF_EXPERIENCE or COMPANY_NAME column not found in the job data.")
+
+    # ------------------------
+    # Right: Companies Hiring Internships & Entry Level (SENIORITY_LEVEL)
+    # ------------------------
+    with col_internship:
+        if "COMPANY_NAME" in df.columns and "SENIORITY_LEVEL" in df.columns:
+            internship_df = df[df["SENIORITY_LEVEL"].str.lower().isin(["internship", "entry level"])]
+            if not internship_df.empty:
+                internship_counts = internship_df.groupby("COMPANY_NAME").size().reset_index(name="internship_job_count")
+                internship_counts = internship_counts.sort_values("internship_job_count", ascending=False).head(20)
+                height_intern = max(300, len(internship_counts)*30)
+                fig_internship = px.bar(internship_counts, x="internship_job_count", y="COMPANY_NAME", orientation="h",
+                                        title="Top Companies Hiring Internship & Entry Level",
+                                        labels={"COMPANY_NAME": "Company", "internship_job_count": "Job Count"})
+                fig_internship.update_yaxes(categoryorder="total ascending")
+                fig_internship.update_layout(height=height_intern)
+                st.plotly_chart(fig_internship, use_container_width=True, key="internship_chart")
+            else:
+                st.write("No data available for Internship or Entry level positions.")
+        else:
+            st.write("SENIORITY_LEVEL or COMPANY_NAME column not found in the job data.")
+
+    st.markdown("### Companies founded Over Time")
+    if "FOUNDED" in companies_info.columns:
+        companies_info["FOUNDED"] = pd.to_numeric(companies_info["FOUNDED"], errors="coerce")
+        founded_data = companies_info.dropna(subset=["FOUNDED"])
         current_year = datetime.date.today().year
-        founded_data = founded_data[(founded_data["Founded"] >= 1900) & (founded_data["Founded"] <= current_year)]
-        founded_counts = founded_data.groupby("Founded").size().reset_index(name="Count")
-        founded_counts = founded_counts.sort_values("Founded")
-        fig_line = px.line(founded_counts, x="Founded", y="Count",
-                           title="Companies Founded Over Time (1900-Present)",
+        founded_data = founded_data[(founded_data["FOUNDED"] >= 1900) & (founded_data["FOUNDED"] <= current_year)]
+        founded_counts = founded_data.groupby("FOUNDED").size().reset_index(name="Count")
+        founded_counts = founded_counts.sort_values("FOUNDED")
+        fig_line = px.line(founded_counts, x="FOUNDED", y="Count",
+                           title="Companies founded Over Time (1900-Present)",
                            markers=True)
         st.plotly_chart(fig_line, use_container_width=True, key="company_founded_line")
     else:
-        st.write("Founded column not found in companies data.")
-    
-# Example usage:
-# companies_info = pd.read_csv("companies_info.csv")
-# df = ...  # your job dataset
-# main(df, companies_info)
+        st.write("founded column not found in companies data.")
