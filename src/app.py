@@ -45,11 +45,14 @@ if not st.session_state["authenticated"]:
 
     st.stop()
 
-load_dotenv()
+# load_dotenv()
 
-snowflake_username = os.getenv('SNOWFLAKE_USERNAME')
-snowflake_password = os.getenv('SNOWFLAKE_PASSWORD')
-snowflake_account = os.getenv('SNOWFLAKE_ACCOUNT')
+# snowflake_username = os.getenv('SNOWFLAKE_USERNAME')
+# snowflake_password = os.getenv('SNOWFLAKE_PASSWORD')
+# snowflake_account = os.getenv('SNOWFLAKE_ACCOUNT')
+snowflake_username = os.environ["SNOWFLAKE_USERNAME"]
+snowflake_password = os.environ["SNOWFLAKE_PASSWORD"]
+snowflake_account = os.environ["SNOWFLAKE_ACCOUNT"]
 
 # Set the page layout to wide
 st.set_page_config(layout="wide")
