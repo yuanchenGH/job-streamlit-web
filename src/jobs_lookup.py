@@ -15,10 +15,30 @@ def parse_entry(entry):
     return None, 0
 
 # Risk calculation function with explanations
+# def calculate_risk(company_name, company_info):
+#     row = company_info[company_info["COMPANY_NAME"] == company_name]
+    
+#     # If company is not in database
+#     if row.empty:
+#         return "Not in Database", "Company information is not available in our records."
+
+#     website = row["WEBSITE"].iloc[0] if "WEBSITE" in row.columns else ""
+#     members = row["MEMBERS"].iloc[0] if "MEMBERS" in row.columns else 0
+#     verified = row["VERIFIED_PAGE"].iloc[0] if "VERIFIED_PAGE" in row.columns else False
+#     posts = row["POSTS"].iloc[0] if "POSTS" in row.columns else 0
+    
+#     no_website = pd.isna(website) or website.strip() == ""
+#     not_verified = (not verified) or (str(verified).lower() == "no")
+
+#     if no_website and members < 10 and not_verified and posts < 2:
+#         return "Potential Scam", "Company has no website, few members, is not verified, and has minimal activity."
+#     if (not no_website) and (members < 10) and not_verified and (not website.lower().endswith((".com", ".gov"))):
+#         return "High", "Company is not verified, has a small online presence, and an untrusted website."
+    
+#     return "Low", "Company is verified, has an established online presence, and seems legitimate."
 def calculate_risk(company_name, company_info):
     row = company_info[company_info["COMPANY_NAME"] == company_name]
-    
-    # If company is not in database
+
     if row.empty:
         return "Not in Database", "Company information is not available in our records."
 
@@ -26,16 +46,52 @@ def calculate_risk(company_name, company_info):
     members = row["MEMBERS"].iloc[0] if "MEMBERS" in row.columns else 0
     verified = row["VERIFIED_PAGE"].iloc[0] if "VERIFIED_PAGE" in row.columns else False
     posts = row["POSTS"].iloc[0] if "POSTS" in row.columns else 0
-    
-    no_website = pd.isna(website) or website.strip() == ""
-    not_verified = (not verified) or (str(verified).lower() == "no")
 
-    if no_website and members < 10 and not_verified and posts < 2:
-        return "Potential Scam", "Company has no website, few members, is not verified, and has minimal activity."
-    if (not no_website) and (members < 10) and not_verified and (not website.lower().endswith((".com", ".gov"))):
-        return "High", "Company is not verified, has a small online presence, and an untrusted website."
-    
-    return "Low", "Company is verified, has an established online presence, and seems legitimate."
+    # Risk checks
+    no_website = pd.isna(website) or website.strip() == ""
+    few_members = members < 10
+    not_verified = (not verified) or (str(verified).lower() == "no")
+    low_activity = posts < 2
+    untrusted_website = False
+
+    if not no_website:
+        untrusted_website = not website.lower().endswith((".com", ".gov"))
+
+    # Count how many risk factors are true
+    risk_factors = [no_website, few_members, not_verified, low_activity, untrusted_website]
+    risk_score = sum(risk_factors)
+
+    # Map risk score to level
+    if risk_score == 0 or risk_score == 1:
+        risk_level = "Low"
+        explanation = "Company has strong indicators of legitimacy."
+    elif risk_score == 2:
+        risk_level = "Medium"
+        explanation = "Company shows some moderate risk factors."
+    elif risk_score == 3:
+        risk_level = "High"
+        explanation = "Company shows several risk factors indicating caution."
+    else:  # 4 or 5 risk factors
+        risk_level = "Very High"
+        explanation = "Company shows many risk factors and may be untrustworthy."
+
+    # Build detailed reason string
+    details = []
+    if no_website:
+        details.append("no website")
+    if few_members:
+        details.append("few members")
+    if not_verified:
+        details.append("not verified")
+    if low_activity:
+        details.append("low post activity")
+    if untrusted_website:
+        details.append("untrusted website domain")
+
+    if details:
+        explanation += f" (Triggered factors: {', '.join(details)}.)"
+
+    return risk_level, explanation
 
 # Helper to make URL clickable.
 def make_clickable(val, link_text):
