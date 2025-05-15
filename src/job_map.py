@@ -85,7 +85,7 @@ def main(df, state_df, city_df):
         if city_agg.empty:
             st.warning("No city-level data available.")
         else:
-            city_agg_100 = city_agg.head(200)
+            city_agg_100 = city_agg.head(100)
             fig_map = px.scatter_mapbox(
                 city_agg_100.dropna(subset=["LATITUDE", "LONGITUDE"]),
                 lat="LATITUDE",
