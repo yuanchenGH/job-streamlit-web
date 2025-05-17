@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import ast
-import snowflake.connector
+# import snowflake.connector
 import os
 import bcrypt
+from sqlalchemy import create_engine
 from dotenv import load_dotenv
 
 
@@ -77,14 +78,19 @@ path = 'D:/Learn/projects/data/job_data/mine/'
 
 @st.cache_data
 def load_data():
-    conn = snowflake.connector.connect(
-        user=snowflake_username,
-        password=snowflake_password,
-        account=snowflake_account,
-        warehouse="COMPUTE_WH",
-        database="LINKEDIN_JOBS",
-        schema="PUBLIC"
+    # conn = snowflake.connector.connect(
+    #     user=snowflake_username,
+    #     password=snowflake_password,
+    #     account=snowflake_account,
+    #     warehouse="COMPUTE_WH",
+    #     database="LINKEDIN_JOBS",
+    #     schema="PUBLIC"
+    # )
+    conn_str = (
+    f"snowflake://{snowflake_username}:{snowflake_password}@{snowflake_account}/"
+    f"LINKEDIN_JOBS/PUBLIC?warehouse=COMPUTE_WH&role=STREAMLIT_ROLE"
     )
+    engine = create_engine(conn_str)
 
     query_jobs = """
     SELECT 
@@ -118,7 +124,7 @@ def load_data():
     ORDER BY AI.POSTED_DATE DESC;
     """
 
-    merged_df = pd.read_sql(query_jobs, conn)
+    merged_df = pd.read_sql(query_jobs, engine)
     merged_df['POSTED_DATE'] = pd.to_datetime(merged_df['POSTED_DATE'], errors='coerce')
 
     query_companies = """SELECT 
@@ -141,21 +147,21 @@ def load_data():
                                 WHERE_THEY_STUDIED
                          FROM COMPANIES_INFO
                       """
-    companies_info = pd.read_sql(query_companies, conn)
+    companies_info = pd.read_sql(query_companies, engine)
 
     query_state_coordinates = "SELECT * FROM COORDINATES_STATE"
-    state_df = pd.read_sql(query_state_coordinates, conn)
+    state_df = pd.read_sql(query_state_coordinates, engine)
 
     query_city_coordinates = "SELECT * FROM COORDINATES_CITY"
-    city_df = pd.read_sql(query_city_coordinates, conn)
+    city_df = pd.read_sql(query_city_coordinates, engine)
 
     query_job_titles = "SELECT PRIMARY_TITLE FROM job_title_counts ORDER BY count DESC;"
-    job_title_options = pd.read_sql(query_job_titles, conn)['PRIMARY_TITLE'].tolist()
+    job_title_options = pd.read_sql(query_job_titles, engine)['PRIMARY_TITLE'].tolist()
 
     query_job_functions = "SELECT job_function FROM job_function_counts ORDER BY count DESC;"
-    job_func_options = pd.read_sql(query_job_functions, conn)['JOB_FUNCTION'].tolist()
+    job_func_options = pd.read_sql(query_job_functions, engine)['JOB_FUNCTION'].tolist()
 
-    conn.close()
+    # conn.close()
     return merged_df, companies_info, state_df, city_df, job_title_options, job_func_options
 
 df, company_df, state_df, city_df, job_title_options, job_func_options = load_data()
