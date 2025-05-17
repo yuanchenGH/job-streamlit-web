@@ -23,28 +23,34 @@ def authenticate(username, password, user_credentials):
             return True
     return False
 
-# Load users once
-user_credentials = load_user_credentials("users.csv")
+def read_sql_uppercase(query, engine):
+    df = pd.read_sql(query, engine)
+    df.columns = [col.upper() for col in df.columns]
+    return df
 
-# Check session state
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
+# # Load users
+# user_credentials = load_user_credentials("users.csv")
 
-if not st.session_state["authenticated"]:
-    st.title("🔐 Secure Login")
+# # Check session state
+# if "authenticated" not in st.session_state:
+#     st.session_state["authenticated"] = False
+#     # st.session_state["authenticated"] = True
 
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+# if not st.session_state["authenticated"]:
+#     st.title("🔐 Secure Login")
 
-    if st.button("Login"):
-        if authenticate(username, password, user_credentials):
-            st.session_state["authenticated"] = True
-            st.success("✅ Login successful!")
-            st.rerun()
-        else:
-            st.error("❌ Invalid username or password")
+#     username = st.text_input("Username")
+#     password = st.text_input("Password", type="password")
 
-    st.stop()
+#     if st.button("Login"):
+#         if authenticate(username, password, user_credentials):
+#             st.session_state["authenticated"] = True
+#             st.success("✅ Login successful!")
+#             st.rerun()
+#         else:
+#             st.error("❌ Invalid username or password")
+
+#     st.stop()
 
 load_dotenv()
 
@@ -105,7 +111,7 @@ def load_data():
         R.COMPANY_NAME,
         R.COMPANY_URL,
         R.SALARY,
-        AI.DATE AS POSTED_DATE,
+        AI.DATE AS "POSTED_DATE",
         AI.AVG_SALARY,
         AI.SKILLS_MATCHED,
         AI.DEGREE,
@@ -118,13 +124,14 @@ def load_data():
     FROM LINKEDIN_FIN_ACC_AI AI
     LEFT JOIN LINKEDIN_FIN_ACC_RAW R 
       ON R.JOB_ID = AI.JOB_ID
-    WHERE AI.POSTED_DATE > '02/22/2025'
+    WHERE AI.DATE > '02/22/2025'
           AND (AI.AVG_SALARY > 20000 AND AI.AVG_SALARY < 500000
            OR AI.AVG_SALARY IS NULL)
     ORDER BY AI.POSTED_DATE DESC;
     """
 
-    merged_df = pd.read_sql(query_jobs, engine)
+    merged_df = read_sql_uppercase(query_jobs, engine)
+    print(merged_df.columns)
     merged_df['POSTED_DATE'] = pd.to_datetime(merged_df['POSTED_DATE'], errors='coerce')
 
     query_companies = """SELECT 
@@ -147,19 +154,19 @@ def load_data():
                                 WHERE_THEY_STUDIED
                          FROM COMPANIES_INFO
                       """
-    companies_info = pd.read_sql(query_companies, engine)
+    companies_info = read_sql_uppercase(query_companies, engine)
 
     query_state_coordinates = "SELECT * FROM COORDINATES_STATE"
-    state_df = pd.read_sql(query_state_coordinates, engine)
+    state_df = read_sql_uppercase(query_state_coordinates, engine)
 
     query_city_coordinates = "SELECT * FROM COORDINATES_CITY"
-    city_df = pd.read_sql(query_city_coordinates, engine)
+    city_df = read_sql_uppercase(query_city_coordinates, engine)
 
     query_job_titles = "SELECT PRIMARY_TITLE FROM job_title_counts ORDER BY count DESC;"
-    job_title_options = pd.read_sql(query_job_titles, engine)['PRIMARY_TITLE'].tolist()
+    job_title_options = read_sql_uppercase(query_job_titles, engine)['PRIMARY_TITLE'].tolist()
 
     query_job_functions = "SELECT job_function FROM job_function_counts ORDER BY count DESC;"
-    job_func_options = pd.read_sql(query_job_functions, engine)['JOB_FUNCTION'].tolist()
+    job_func_options = read_sql_uppercase(query_job_functions, engine)['JOB_FUNCTION'].tolist()
 
     # conn.close()
     return merged_df, companies_info, state_df, city_df, job_title_options, job_func_options
