@@ -10,17 +10,23 @@ def process_data(df, state_df, city_df):
     # --------------------------------
     # ✅ Step 1: Aggregate job data
     # --------------------------------
+    # Replace empty strings and 'nan' strings with actual NaN values
+    df['STATE'].replace(['', 'nan'], None, inplace=True)
+    df['LOCATION'].replace(['', 'nan'], None, inplace=True)
     # STATE-LEVEL Aggregation
     # STATE-LEVEL Aggregation (Sorted by JOB_COUNT)
     state_agg = df.groupby("STATE").agg(
         JOB_COUNT=("JOB_ID", "count"),
         AVG_SALARY=("AVG_SALARY", "mean")
     ).reset_index().sort_values(by="JOB_COUNT", ascending=False)
+    state_agg = state_agg.dropna(subset=["STATE"])
+
 
     # CITY-LEVEL Aggregation (Sorted by JOB_COUNT)
     city_agg = df.groupby("LOCATION").agg(
         JOB_COUNT=("JOB_ID", "count")
     ).reset_index().sort_values(by="JOB_COUNT", ascending=False)
+    city_agg = city_agg.dropna(subset=['LOCATION'])
 
     # --------------------------------
     # ✅ Step 2: Join State Data (AFTER Aggregation)

@@ -1,0 +1,15 @@
+gcloud projects add-iam-policy-binding analog-marking-452801-t0 \
+  --member="serviceAccount:494599020244-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+PROJECT_ID: analog-marking-452801-t0
+NAME: Streamlit-job-board
+PROJECT_NUMBER: 494599020244
+
+gcloud run deploy Streamlit-job-board \
+  --image gcr.io/analog-marking-452801-t0/job-streamlit-web \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-secrets SNOWFLAKE_ACCOUNT=SNOWFLAKE_ACCOUNT:latest \
+  --set-secrets SNOWFLAKE_USER=SNOWFLAKE_USER:latest \
+  --set-secrets SNOWFLAKE_PASSWORD=SNOWFLAKE_PASSWORD:latest

@@ -46,7 +46,8 @@ def main(df, companies_info):
     else:
         st.write("Industry column not found in companies data.")
 
-    st.markdown("### Company Performance and Education/Skills Analysis")
+    st.markdown("### Company Performance and Education/Skills Analysis (Based on Employee Profile)")
+
     
     # ------------------------
     # Chart 1: Top Companies by Average Salary (exclude companies with <10 postings)

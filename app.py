@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import ast
-# import snowflake.connector
 import os
 import bcrypt
 from sqlalchemy import create_engine
@@ -84,14 +83,6 @@ path = 'D:/Learn/projects/data/job_data/mine/'
 
 @st.cache_data
 def load_data():
-    # conn = snowflake.connector.connect(
-    #     user=snowflake_username,
-    #     password=snowflake_password,
-    #     account=snowflake_account,
-    #     warehouse="COMPUTE_WH",
-    #     database="LINKEDIN_JOBS",
-    #     schema="PUBLIC"
-    # )
     conn_str = (
     f"snowflake://{snowflake_username}:{snowflake_password}@{snowflake_account}/"
     f"LINKEDIN_JOBS/PUBLIC?warehouse=COMPUTE_WH&role=STREAMLIT_ROLE"
