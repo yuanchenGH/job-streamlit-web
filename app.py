@@ -131,7 +131,6 @@ def load_data():
     """
 
     merged_df = read_sql_uppercase(query_jobs, engine)
-    print(merged_df.columns)
     merged_df['POSTED_DATE'] = pd.to_datetime(merged_df['POSTED_DATE'], errors='coerce')
 
     query_companies = """SELECT 
