@@ -1,16 +1,24 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
-# Set the working directory
 WORKDIR /app
 
-# Copy the current directory contents into the container
-COPY . /app
+# Install OS-level dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
+# Install Python dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose Cloud Run's expected port
+# Copy app files
+COPY . .
+
+# Set environment variables from .env (in production, this is passed separately)
+# For local development, install python-dotenv to read this
+RUN pip install python-dotenv
+
 EXPOSE 8080
 
-# Run the Streamlit app on Cloud Run's required port
-CMD ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+# Run Streamlit app
+CMD streamlit run app.py --server.port=8080 --server.enableCORS=false
