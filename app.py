@@ -85,7 +85,7 @@ path = 'D:/Learn/projects/data/job_data/mine/'
 def load_data():
     conn_str = (
     f"snowflake://{snowflake_username}:{snowflake_password}@{snowflake_account}/"
-    f"LINKEDIN_JOBS/PUBLIC?warehouse=COMPUTE_WH&role=STREAMLIT_ROLE"
+    f"LINKEDIN_JOBS/PUBLIC?warehouse=COMPUTE_WH&role=ACCOUNTADMIN"
     )
     engine = create_engine(conn_str)
 
