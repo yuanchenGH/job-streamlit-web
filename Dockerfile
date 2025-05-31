@@ -21,4 +21,6 @@ RUN pip install python-dotenv
 EXPOSE 8080
 
 # Run Streamlit app
-CMD streamlit run app.py --server.port=8080 --server.enableCORS=false
+# CMD streamlit run app.py --server.port=8080 --server.enableCORS=false
+CMD streamlit run app.py --server.port=8080 --server.address=0.0.0.0 --server.enableCORS=false --server.headless=true
+
