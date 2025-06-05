@@ -13,3 +13,7 @@ gcloud run deploy Streamlit-job-board \
   --set-secrets SNOWFLAKE_ACCOUNT=SNOWFLAKE_ACCOUNT:latest \
   --set-secrets SNOWFLAKE_USER=SNOWFLAKE_USER:latest \
   --set-secrets SNOWFLAKE_PASSWORD=SNOWFLAKE_PASSWORD:latest
+
+gcloud run services update job-streamlit-web \
+  --region YOUR_REGION \
+  --max-instances=0
