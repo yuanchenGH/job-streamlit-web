@@ -11,8 +11,8 @@ def process_data(df, state_df, city_df):
     # ✅ Step 1: Aggregate job data
     # --------------------------------
     # Replace empty strings and 'nan' strings with actual NaN values
-    df['STATE'].replace(['', 'nan'], None, inplace=True)
-    df['LOCATION'].replace(['', 'nan'], None, inplace=True)
+    df['STATE'].replace(['', 'nan', 'None', 'NA', 'N/A'], None, inplace=True)
+    df['LOCATION'].replace(['', 'nan', 'None', 'NA', 'N/A'], None, inplace=True)
     # STATE-LEVEL Aggregation
     # STATE-LEVEL Aggregation (Sorted by JOB_COUNT)
     state_agg = df.groupby("STATE").agg(
@@ -118,7 +118,12 @@ def main(df, state_df, city_df):
                   title="Top States by Job Counts",
                   color_discrete_sequence=px.colors.qualitative.Plotly)
     fig1.update_yaxes(categoryorder="total ascending")
-    fig1.update_layout(height=max(200, len(top_job_count) * 30))
+    # fig1.update_layout(height=max(200, len(top_job_count) * 30))
+    fig1.update_layout(
+    height=max(200, len(top_job_count) * 30),
+    xaxis_title="Job Count",
+    yaxis_title="State"
+)
 
     # ------------------------
     # Chart 2: Top by Average Salary (Filtered)
@@ -128,7 +133,12 @@ def main(df, state_df, city_df):
                   title="Top States by Average Salary",
                   color_discrete_sequence=px.colors.qualitative.Plotly)
     fig2.update_yaxes(categoryorder="total ascending")
-    fig2.update_layout(height=max(200, len(top_avg_salary) * 30))
+    # fig2.update_layout(height=max(200, len(top_avg_salary) * 30))
+    fig2.update_layout(
+    height=max(200, len(top_job_count) * 30),
+    xaxis_title="Adjusted job count",
+    yaxis_title="State"
+)
 
     # ------------------------
     # Chart 3: Job Counts Adjusted by Population
@@ -138,7 +148,12 @@ def main(df, state_df, city_df):
                   title="Top States by Job Counts - Adjusted by Population",
                   color_discrete_sequence=["lightblue"])
     fig3.update_yaxes(categoryorder="total ascending")
-    fig3.update_layout(height=max(200, len(top_adj_jobs) * 30))
+    # fig3.update_layout(height=max(200, len(top_adj_jobs) * 30))
+    fig3.update_layout(
+    height=max(200, len(top_job_count) * 30),
+    xaxis_title="Job Count",
+    yaxis_title="State"
+)
 
     # ------------------------
     # Chart 4: Average Salary Adjusted by Cost of Living
@@ -148,7 +163,12 @@ def main(df, state_df, city_df):
                   title="Top States by Average Salary - Adjusted by Cost of Living",
                   color_discrete_sequence=["lightblue"])
     fig4.update_yaxes(categoryorder="total ascending")
-    fig4.update_layout(height=max(200, len(top_adj_salary) * 30))
+    # fig4.update_layout(height=max(200, len(top_adj_salary) * 30))
+    fig4.update_layout(
+    height=max(200, len(top_job_count) * 30),
+    xaxis_title="Adjusted job count",
+    yaxis_title="State"
+)
 
     # ------------------------
     # Layout: Arrange the four charts in a 2x2 grid.
